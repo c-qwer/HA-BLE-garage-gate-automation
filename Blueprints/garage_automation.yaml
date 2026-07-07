@@ -1,0 +1,260 @@
+# BLE-Based Garage Door Automation
+#
+# Logic summary:
+# - When any selected vehicle presence sensor turns ON:
+#     - Open the garage door if it is currently closed.
+#
+# - When any selected vehicle presence sensor turns OFF:
+#     - If the garage door is open, start a safe close sequence.
+#     - The door will only close after the obstacle sensor has stayed clear
+#       for the configured delay.
+#
+# - During the close countdown:
+#     - If an obstacle appears, restart the countdown.
+#     - If another vehicle leaves, restart the countdown.
+#     - If a vehicle returns, cancel this close attempt and keep the door open.
+#
+# Sensor assumptions:
+# - vehicle_presence:
+#     - "on"  = vehicle is present / near the garage
+#     - "off" = vehicle has left / is no longer detected
+#
+# - obstacle_sensor:
+#     - "on"  = blocked / obstacle detected
+#     - "off" = clear / safe path
+
+blueprint:
+  name: BLE-Based Garage Door Automation
+  description: Open a garage door using BLE vehicle presence and close it after a vehicle leaves when the obstacle path stays clear.
+  domain: automation
+  author: c_qwer
+
+  input:
+    garage_cover:
+      name: Garage Door
+      description: The cover entity of the target garage door.
+      selector:
+        entity:
+          filter:
+            - domain: cover
+
+    obstacle_sensor:
+      name: Obstacle Sensor
+      description: Binary sensor for the garage door path. "on" means blocked, "off" means clear.
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+
+    vehicle_presence:
+      name: Vehicle Presence
+      description: Select one or more vehicle presence sensors. "on" means the vehicle is present.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: binary_sensor
+
+    close_delay_seconds:
+      name: Close Delay
+      description: Number of seconds the path must stay clear before closing the garage door after a vehicle leaves.
+      default: 60
+      selector:
+        number:
+          min: 10
+          max: 1800
+          unit_of_measurement: seconds
+          mode: slider
+
+trigger:
+  # Trigger when any selected vehicle presence sensor turns ON (From OFF to ON).
+  - platform: state
+    entity_id: !input vehicle_presence
+    to: "on"
+    id: vehicle_detected
+  
+  # Trigger when any selected vehicle presence sensor turns OFF (From ON to OFF).
+  - platform: state
+    entity_id: !input vehicle_presence
+    to: "off"
+    id: vehicle_leave
+
+action:
+
+  - variables:
+      obstacle_sensor: !input obstacle_sensor
+      vehicle_presence: !input vehicle_presence
+      close_delay_seconds: !input close_delay_seconds
+
+  - choose:
+      # ------------------------------------------------------------
+      # Vehicle detected branch
+      # ------------------------------------------------------------
+      #
+      # If a vehicle is detected and the garage door is closed,
+      # open the garage door.
+      #
+      # If the door is already open, opening, or in another state,
+      # this branch does nothing.
+      - conditions:
+          - condition: trigger
+            id: vehicle_detected
+
+          - condition: state
+            entity_id: !input garage_cover
+            state: "closed"
+
+        sequence:
+          - service: cover.open_cover
+            target:
+              entity_id: !input garage_cover
+
+      # ------------------------------------------------------------
+      # Vehicle left branch
+      # ------------------------------------------------------------
+      #
+      # If a vehicle leaves and the garage door is open,
+      # start the safe close process.
+      #
+      # This does not require all vehicles to be gone.
+      # Any vehicle leaving can start the close countdown.
+      - conditions:
+          - condition: trigger
+            id: vehicle_leave
+
+          - condition: state
+            entity_id: !input garage_cover
+            state: "open"
+
+        sequence:
+          # Repeat the safe-close countdown until it completes without interruption.
+          #
+          # The loop restarts when:
+          # - an obstacle appears
+          # - another vehicle leaves
+          #
+          # The loop is cancelled when:
+          # - a vehicle returns
+          #
+          # The loop exits successfully only when the countdown reaches timeout
+          # without any interruption.
+          - repeat:
+              sequence:
+                # ------------------------------------------------------------
+                # Step 1: If the path is currently blocked, wait until clear.
+                # ------------------------------------------------------------
+                #
+                # If the obstacle sensor is already ON, the close countdown
+                # should not start yet.
+                #
+                # While waiting for the obstacle to clear, also listen for
+                # a vehicle returning. If that happens, cancel this close attempt.
+                - choose:
+                    - conditions:
+                        - condition: state
+                          entity_id: !input obstacle_sensor
+                          state: "on"
+                      sequence:
+                        - wait_for_trigger:
+                            # Obstacle cleared, so the countdown can start.
+                            - platform: state
+                              entity_id: !input obstacle_sensor
+                              to: "off"
+                              id: obstacle_cleared
+                            
+                            # Vehicle returned before the countdown even started.
+                            # In this case, cancel the close attempt.
+                            - platform: state
+                              entity_id: !input vehicle_presence
+                              to: "on"
+                              id: vehicle_returned
+                        
+                        # If the wait ended because a vehicle returned,
+                        # stop the current automation run and keep the door open.
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: >
+                                    {{ wait.trigger is not none and wait.trigger.id | default('') == 'vehicle_returned' }}
+                              sequence:
+                                - stop: "Vehicle returned before close countdown. Keep garage open."
+
+                # ------------------------------------------------------------
+                # Step 2: Start the clear-path countdown.
+                # ------------------------------------------------------------
+                #
+                # At this point the obstacle path is clear.
+                #
+                # This wait works like a resettable delay:
+                # - If nothing happens until timeout, the countdown succeeded.
+                # - If an obstacle appears, the countdown is interrupted.
+                # - If another vehicle leaves, the countdown is interrupted.
+                # - If a vehicle returns, this close attempt is cancelled.
+                - wait_for_trigger:
+                    # Obstacle appeared during the countdown.
+                    # The countdown should restart after the obstacle clears.
+                    - platform: state
+                      entity_id: !input obstacle_sensor
+                      to: "on"
+                      id: obstacle_detected
+                    
+                    # Another vehicle left during the countdown.
+                    # Restart the countdown from zero.
+                    - platform: state
+                      entity_id: !input vehicle_presence
+                      to: "off"
+                      id: vehicle_left_again
+                    
+                    # A vehicle returned during the countdown.
+                    # Cancel this close attempt and keep the garage open.
+                    - platform: state
+                      entity_id: !input vehicle_presence
+                      to: "on"
+                      id: vehicle_returned
+
+                  timeout:
+                    seconds: "{{ close_delay_seconds | int }}"
+
+                  continue_on_timeout: true
+
+                # If a vehicle returns during countdown, stop this close attempt.
+                # The next vehicle_leave trigger will start a new countdown.
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: >
+                            {{ wait.trigger is not none and wait.trigger.id | default('') == 'vehicle_returned' }}
+                      sequence:
+                        - stop: "Vehicle returned during close countdown. Keep garage open."
+
+              until:
+                # wait.trigger is none means the countdown completed without interruption.
+                - condition: template
+                  value_template: "{{ wait.trigger is none }}"
+          
+          # ------------------------------------------------------------
+          # Final safety checks before closing
+          # ------------------------------------------------------------
+          #
+          # Check again right before sending the close command.
+          # This prevents closing if the state changed during the automation.
+
+          - condition: state
+            entity_id: !input garage_cover
+            state: "open"
+
+          - condition: state
+            entity_id: !input obstacle_sensor
+            state: "off"
+          
+          # Close the garage door.
+          - service: cover.close_cover
+            target:
+              entity_id: !input garage_cover
+
+# Only allow one run at a time.
+#
+# This avoids multiple overlapping countdowns fighting each other.
+# New triggers are ignored while the automation is already running.
+mode: single
+max_exceeded: silent
