@@ -258,3 +258,4 @@ action:
 # New triggers are ignored while the automation is already running.
 mode: single
 max_exceeded: silent
+

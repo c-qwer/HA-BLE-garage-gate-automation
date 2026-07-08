@@ -1,0 +1,122 @@
+# ESPHome example for BLE-Based Garage Door Automation
+# This file is an example only.
+
+substitutions:
+  device_name: garage-sensors
+  friendly_name: Garage Sensors
+
+  # Set the minimum RSSI threshold to a lower value to reduce the time
+  # rssi smaller -> the trigger zone is further away
+  # but also more false positives.
+  threshold_min_rssi: -80dB
+
+  # Set the BLE timeout to a lower value to reduce the time 
+  # it takes to detect when a vehicle leaves.
+  ble_timeout: 15s
+
+  # Set the BLE delayed_on, avoid false positives when a vehicle 
+  # is leaving the garage.
+  ble_delayed_on: 2s
+
+  # GPIO pin for the obstacle sensor (IR beam / obstacle detector).
+  obstacle_sensor_pin: GPIO13
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  # optional encryption for API communication
+  encryption:
+    key: !secret garage_ble_node_api_key
+
+ota:
+  - platform: esphome
+    # optional password for OTA updates
+    password: !secret garage_ble_node_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # optional fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret garage_ble_node_fallback_password
+
+captive_portal:
+
+# Required for ESPHome BLE presence tracking.
+esp32_ble_tracker:
+
+binary_sensor:
+  # ------------------------------------------------------------
+  # Vehicle BLE presence sensors
+  # ------------------------------------------------------------
+  #
+  # Option A: Track by BLE MAC address.
+  # This works for devices with stable BLE MAC addresses.
+  #
+  # Replace XX:XX:XX:XX:XX:XX with your BLE beacon/device MAC.
+  - platform: ble_presence
+    mac_address: XX:XX:XX:XX:XX:XX
+    name: "Vehicle 1 Presence"
+    id: vehicle_1_presence
+    min_rssi: ${threshold_min_rssi}
+    timeout: ${ble_timeout}
+    filters:
+      - delayed_on: ${ble_delayed_on}
+  
+  # optional: add more vehicles by copying the above block and changing the MAC address and name/id.
+  - platform: ble_presence
+    mac_address: XX:XX:XX:XX:XX:XX
+    name: "Vehicle 2 Presence"
+    id: vehicle_2_presence
+    min_rssi: ${threshold_min_rssi}
+    timeout: ${ble_timeout}
+    filters:
+      - delayed_on: ${ble_delayed_on}
+  
+  # Option B: Track by iBeacon UUID instead of MAC address.
+  #
+  # Use this if your beacon / phone app broadcasts iBeacon.
+  # Uncomment and edit if needed.
+  #
+  # - platform: ble_presence
+  #   ibeacon_uuid: "00000000-0000-0000-0000-000000000000"
+  #   ibeacon_major: 1
+  #   ibeacon_minor: 1
+  #   name: "Garage BLE iBeacon Vehicle Presence"
+  #   min_rssi: ${threshold_min_rssi}
+  #   timeout: ${ble_timeout}
+  #   filters:
+  #     - delayed_on: ${ble_delayed_on}
+
+  # ------------------------------------------------------------
+  # Obstacle sensor
+  # ------------------------------------------------------------
+  #
+  # Example GPIO input from IR beam / obstacle detector.
+  #
+  # Assumption:
+  # - on  = obstacle detected / blocked
+  # - off = clear
+  #
+  # If your sensor is reversed, change inverted: true/false.
+  - platform: gpio
+    name: "Garage Obstacle"
+    id: garage_obstacle
+    device_class: safety
+    pin:
+      number: ${obstacle_sensor_pin}
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      # Small debounce to avoid flickering.
+      - delayed_on: 50ms
+      - delayed_off: 200ms
