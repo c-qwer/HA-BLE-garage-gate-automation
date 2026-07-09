@@ -1,0 +1,50 @@
+blueprint:
+  name: Open Armed
+  description: A toggle switch to control if the garage door should open when a vehicle is detected. If on, the garage door will open when a vehicle is detected. If off, the garage door will not open automatically.
+  domain: automation
+  author: c_qwer
+
+  input:
+    garage_cover:
+      name: Garage Door
+      description: The cover entity of the target garage door.
+      selector:
+        entity:
+          filter:
+            - domain: cover
+    
+    vehicle_presence:
+      name: Vehicle Presence
+      description: Select one or more verified vehicle. "on" means the vehicle is present.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: binary_sensor
+    
+    open_armed:
+      name: Open Armed
+      description: If on, the garage door will open when a vehicle is detected. If off, the garage door will not open automatically.
+      selector:
+        filter:
+          - domain: input_boolean
+    
+trigger:
+  - platform: state
+    entity_id: !input vehicle_presence
+    to: "off"
+    id: vehicle_leave
+    for:
+      seconds: 30
+
+condition:
+  - condition: state
+    entity_id: !input garage_cover
+    state: "closed"
+    
+action:
+  - service: input_boolean.turn_on
+    target:
+      entity_id: !input open_armed
+
+mode: single
