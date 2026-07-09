@@ -1,4 +1,4 @@
-# BLE-Based Garage Door Automation (Transient BLE Presence)
+# BLE-Based Garage Door Automation
 #
 # Logic summary:
 # - When any selected vehicle presence sensor turns ON:
@@ -24,7 +24,7 @@
 #     - "off" = clear / safe path
 
 blueprint:
-  name: BLE-Based Garage Door Automation (Transient BLE Presence)
+  name: BLE-Based Garage Door Automation
   description: Open a garage door using BLE vehicle presence and close it after a vehicle leaves when the obstacle path stays clear.
   domain: automation
   author: c_qwer
@@ -70,12 +70,14 @@ trigger:
   # Trigger when any selected vehicle presence sensor turns ON (From OFF to ON).
   - platform: state
     entity_id: !input vehicle_presence
+    from: "off"
     to: "on"
     id: vehicle_detected
   
   # Trigger when any selected vehicle presence sensor turns OFF (From ON to OFF).
   - platform: state
     entity_id: !input vehicle_presence
+    from: "on"
     to: "off"
     id: vehicle_leave
 

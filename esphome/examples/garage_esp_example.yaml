@@ -10,12 +10,15 @@ substitutions:
   # but also more false positives.
   threshold_min_rssi: -80dB
 
-  # Set the BLE timeout to a lower value to reduce the time 
-  # it takes to detect when a vehicle leaves.
+  # Set the BLE timeout
+  # If the Tesla BLE signal is not seen for this long,
+  # the sensor will change to off.
+  # Sometimes, the BLE signal (like tesla) can be lost for a few seconds even the car is still present, 
+  # so a longer timeout can help avoid false negatives.
   ble_timeout: 15s
 
-  # Set the BLE delayed_on, avoid false positives when a vehicle 
-  # is leaving the garage.
+  # Set the BLE delayed_on, avoid false positives 
+  # eg. when a vehicle has leaved the garage, but the BLE signal is still somehow detected for a few seconds.
   ble_delayed_on: 2s
 
   # GPIO pin for the obstacle sensor (IR beam / obstacle detector).
