@@ -1,0 +1,139 @@
+blueprint:
+  name: Garage/Gate Open Reminder with Actionable Notification
+  description: >
+    Send an actionable mobile notification when a garage door or gate has been
+    open for too long, or at a scheduled check time if it is still open.
+    The notification includes a button to close the garage/gate.
+  domain: automation
+  author: c_qwer
+
+  input:
+    garage_cover:
+      name: Garage Door or Gate
+      description: The cover entity to monitor and control the gate.
+      selector:
+        entity:
+          filter:
+            - domain: cover
+
+    notify_devices:
+      name: Phones to Notify
+      description: >
+        Select one or more phones that should receive the actionable notification.
+        Each device must use the official Home Assistant mobile app.
+      selector:
+        device:
+          multiple: true
+          filter:
+            - integration: mobile_app
+
+    enable_duration_reminder:
+      name: Enable Open Duration Reminder
+      description: Notify when the garage/gate has stayed open for the configured duration.
+      default: true
+      selector:
+        boolean:
+
+    open_duration_minutes:
+      name: Open Duration
+      description: How long the garage/gate must stay open before sending a reminder.
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 240
+          unit_of_measurement: minutes
+          mode: slider
+
+    enable_scheduled_reminder:
+      name: Enable Scheduled Reminder
+      description: Notify at a fixed time if the garage/gate is still open.
+      default: true
+      selector:
+        boolean:
+
+    check_time:
+      name: Daily Check Time
+      description: Daily time to check whether the garage/gate is still open.
+      default: "22:00:00"
+      selector:
+        time:
+
+trigger:
+  - platform: state
+    entity_id: !input garage_cover
+    to: "open"
+    for:
+      minutes: !input open_duration_minutes
+    id: open_too_long
+
+  - platform: time
+    at: !input check_time
+    id: scheduled_check
+
+condition:
+  - condition: state
+    entity_id: !input garage_cover
+    state: "open"
+
+action:
+  - variables:
+      garage_cover: !input garage_cover
+      notify_devices: !input notify_devices
+      enable_duration_reminder: !input enable_duration_reminder
+      enable_scheduled_reminder: !input enable_scheduled_reminder
+      action_close: "{{ 'CLOSE_GATE_' ~ context.id }}"
+      action_ignore: "{{ 'IGNORE_GATE_' ~ context.id }}"
+
+  - condition: template
+    value_template: >
+      {{
+        (trigger.id == 'open_too_long' and enable_duration_reminder)
+        or
+        (trigger.id == 'scheduled_check' and enable_scheduled_reminder)
+      }}
+  - repeat:
+      for_each: "{{ notify_devices }}"
+      sequence:
+        - service: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+          data:
+            title: "{{ entity_attr(garage_cover, 'friendly_name') }} is open"
+            message: "Please close the gate if it is not in use."
+            data:
+              tag: "gate_open_reminder"
+              actions:
+                - action: "{{ action_close }}"
+                  title: "Close"
+                  destructive: true
+                - action: "{{ action_ignore }}"
+                  title: "Ignore"
+
+  - wait_for_trigger:
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "{{ action_close }}"
+
+      - platform: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "{{ action_ignore }}"
+
+    timeout:
+      seconds: 300
+    continue_on_timeout: true
+
+  - condition: template
+    value_template: >
+      {{ wait.trigger is not none
+         and wait.trigger.event.data.action == action_close }}
+  
+  - condition: state
+    entity_id: !input garage_cover
+    state: "open"
+  
+  - service: cover.close_cover
+    target:
+      entity_id: !input garage_cover
+
+mode: restart
