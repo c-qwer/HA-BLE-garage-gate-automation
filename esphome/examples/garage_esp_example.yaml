@@ -11,11 +11,13 @@ substitutions:
   threshold_min_rssi: -80dB
 
   # Set the BLE timeout
-  # If the Tesla BLE signal is not seen for this long,
-  # the sensor will change to off.
-  # Sometimes, the BLE signal (like tesla) can be lost for a few seconds even the car is still present, 
-  # so a longer timeout can help avoid false negatives.
-  ble_timeout: 60s
+  # If the Tesla BLE signal is not seen for this long, the sensor will change to off.
+  # Longer time is strongly recommended when the vehicles BLE beacon is consistently detected during parking
+  # (like parking in a garage). 
+  # It is because the BLE signal can be unstable and disappear for a few seconds when the vehicle is still present. 
+  # It may mislead the automation to think the vehicle has re-entered the garage and open the door.
+  #
+  ble_timeout: 120s
 
   # Set the BLE delayed_on, avoid false positives 
   # eg. when a vehicle has leaved the garage, but the BLE signal is still somehow detected for a few seconds.
