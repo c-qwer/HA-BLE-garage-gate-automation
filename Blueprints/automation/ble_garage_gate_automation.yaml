@@ -58,7 +58,7 @@ blueprint:
     close_delay_seconds:
       name: Close Delay
       description: Number of seconds the path must stay clear before closing the garage door after a vehicle leaves.
-      default: 60
+      default: 30
       selector:
         number:
           min: 10

@@ -15,7 +15,7 @@ substitutions:
   # the sensor will change to off.
   # Sometimes, the BLE signal (like tesla) can be lost for a few seconds even the car is still present, 
   # so a longer timeout can help avoid false negatives.
-  ble_timeout: 15s
+  ble_timeout: 60s
 
   # Set the BLE delayed_on, avoid false positives 
   # eg. when a vehicle has leaved the garage, but the BLE signal is still somehow detected for a few seconds.
