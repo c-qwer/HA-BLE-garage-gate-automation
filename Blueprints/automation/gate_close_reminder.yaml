@@ -99,7 +99,7 @@ action:
       sequence:
         - service: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
           data:
-            title: "{{ entity_attr(garage_cover, 'friendly_name') }} is open"
+            title: "{{ state_attr(garage_cover, 'friendly_name') }} is open"
             message: "Please close the gate if it is not in use."
             data:
               tag: "gate_open_reminder"
