@@ -23,7 +23,8 @@ The project is intended for garages or gates where a vehicle can be detected by 
 - Garage/gate controller exposed in Home Assistant as a `cover` entity.
   - The cover should report the current gate state, such as `open` and `closed`.
   - The cover should support open and close commands.
-- Vehicle BLE key or BLE beacon.
+- BLE beacon (if the vehicle does not support BLE)
+- Smart Relay connecting to the controller or motor to control the gate
 
 ## BLE Vehicle Options
 
@@ -74,7 +75,40 @@ esphome/
 
 ## Setup
 
-### 1. Configure ESPHome
+### 1. Find Your Vehicle BLE MAC Address
+
+If your vehicle or BLE beacon uses a stable BLE MAC address, you need that address for the ESPHome `ble_presence` sensor.
+
+The easiest way is to use a BLE scanner app on your phone.
+
+1. Install a BLE scanner app on your phone.
+   - iOS: apps such as `nRF Connect` or `LightBlue`.
+   - Android: apps such as `nRF Connect`, `BLE Scanner`, or similar.
+2. Move close to the vehicle, vehicle key, or BLE beacon.
+3. Open the scanner app and start scanning.
+4. Look for a device that appears consistently and has a stronger RSSI when you move closer to the vehicle or beacon.
+5. Copy the BLE MAC address shown by the app.
+
+The address usually looks like:
+
+```text
+AA:BB:CC:DD:EE:FF
+```
+
+Use that address in the ESPHome configuration:
+
+```yaml
+binary_sensor:
+  - platform: ble_presence
+    mac_address: AA:BB:CC:DD:EE:FF
+    name: "Vehicle 1 Presence"
+```
+
+Tip: stand near the vehicle or beacon first, note the devices with strong RSSI, then move away and scan again. The correct device should become weaker or disappear as distance increases.
+
+Some vehicles, phones, and BLE devices use randomized BLE addresses. If the MAC address changes over time, MAC-based tracking will not be reliable. In that case, use a dedicated BLE beacon with a stable MAC address, or use the iBeacon option if your beacon supports UUID/major/minor broadcasting.
+
+### 2. Configure ESPHome
 
 Use the example file:
 
@@ -102,7 +136,7 @@ with the MAC address of your BLE beacon or vehicle BLE device.
 
 If your device broadcasts iBeacon instead of a stable MAC address, use the commented iBeacon example in the ESPHome file.
 
-### 2. Add Secrets
+### 3. Add Secrets
 
 The ESPHome example expects secrets such as:
 
@@ -120,7 +154,7 @@ Generate an ESPHome API encryption key with:
 openssl rand -base64 32
 ```
 
-### 3. Import the Home Assistant Blueprint
+### 4. Import the Home Assistant Blueprint
 
 Import or copy this blueprint into Home Assistant:
 
@@ -135,7 +169,7 @@ Create an automation from the blueprint and select:
 - One or more vehicle presence binary sensors.
 - Close delay in seconds.
 
-### 4. Optional Reminder Automation
+### 5. Optional Reminder Automation
 
 You can also import:
 
